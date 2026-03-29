@@ -67,10 +67,18 @@ Entry point: load config, init all layers, start bot.
 
 ---
 
-## 🔜 Step 5 — Memory
+## ✅ Step 5 — Memory (Completed)
 - Short-term (in-memory per user)
 - Long-term (SQLite)
 - Context trimming
+
+---
+
+## 🔜 Next Step: 6 — Planning Step
+- Add optional `planning` mode flag in config
+- Before main loop: send "planning prompt" to LLM, receive plan
+- Append plan to `messages[]` as system context
+- Execute main loop as usual
 
 ---
 

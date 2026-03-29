@@ -50,9 +50,10 @@ class ToolExecutor {
    * Execute a tool by name with given arguments.
    * @param {string} name
    * @param {object} args
+   * @param {object} context - Execution context (e.g. sessionId)
    * @returns {Promise<string>} Stringified result
    */
-  async execute(name, args) {
+  async execute(name, args, context = {}) {
     const tool = this._registry.get(name);
     if (!tool) {
       throw new Error(`Unknown tool: "${name}"`);
@@ -60,7 +61,7 @@ class ToolExecutor {
 
     // Execute with timeout
     const result = await this._withTimeout(
-      tool.handler(args),
+      tool.handler(args, context),
       this.timeoutMs,
       `Tool "${name}" timed out after ${this.timeoutMs}ms`
     );

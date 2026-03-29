@@ -18,36 +18,16 @@ class AgentOrchestrator {
    * @param {object} deps
    * @param {import('../llm/llmProvider').LLMProvider} deps.llmProvider
    * @param {import('../executor/toolExecutor').ToolExecutor}  deps.toolExecutor
+   * @param {import('../memory/memoryManager').MemoryManager} deps.memoryManager
    * @param {number} deps.maxSteps
    */
-  constructor({ llmProvider, toolExecutor, maxSteps = 10 }) {
+  constructor({ llmProvider, toolExecutor, memoryManager, maxSteps = 10 }) {
     this.llm = llmProvider;
     this.executor = toolExecutor;
+    this.memoryManager = memoryManager;
     this.maxSteps = maxSteps;
-
-    // Per-session message history. Key: sessionId, Value: messages[]
-    this._sessions = new Map();
   }
 
-  /**
-   * Get or create message history for a session.
-   * @param {string|number} sessionId
-   * @returns {Array<object>}
-   */
-  _getHistory(sessionId) {
-    if (!this._sessions.has(sessionId)) {
-      this._sessions.set(sessionId, [
-        {
-          role: 'system',
-          content:
-            'You are a helpful AI assistant with access to tools. ' +
-            'Think step by step. Use tools when needed. ' +
-            'When you have the final answer, respond directly to the user.',
-        },
-      ]);
-    }
-    return this._sessions.get(sessionId);
-  }
 
   /**
    * Process a user message and return the assistant's final reply.
@@ -57,11 +37,10 @@ class AgentOrchestrator {
    * @returns {Promise<string>}        - Final assistant reply
    */
   async run(sessionId, userText) {
-    const messages = this._getHistory(sessionId);
-    const tools = this.executor ? this.executor.getSchemas() : [];
+    // Save user message to memory
+    this.memoryManager.addMessage(sessionId, { role: 'user', content: userText });
 
-    // Add user message to history
-    messages.push({ role: 'user', content: userText });
+    const tools = this.executor ? this.executor.getSchemas() : [];
 
     let steps = 0;
 
@@ -69,19 +48,26 @@ class AgentOrchestrator {
       steps++;
       logger.debug(`[Orchestrator] Session=${sessionId} Step=${steps}`);
 
+      // Get context from memory
+      const messages = this.memoryManager.getHistoryContext(sessionId);
+
       const response = await this.llm.chat(messages, tools);
 
       // Add assistant response to history
-      messages.push(response);
+      this.memoryManager.addMessage(sessionId, response);
 
       // Check if LLM wants to call tools
       if (response.tool_calls && response.tool_calls.length > 0) {
         logger.info(`[Orchestrator] Tool calls requested: ${response.tool_calls.length}`);
 
+        const toolResults = [];
         for (const toolCall of response.tool_calls) {
-          const toolResult = await this._executeToolCall(toolCall);
-          messages.push(toolResult);
+          const toolResult = await this._executeToolCall(sessionId, toolCall);
+          toolResults.push(toolResult);
         }
+        
+        // Add tool results to memory
+        this.memoryManager.addMessages(sessionId, toolResults);
 
         // Continue the loop — let LLM process tool results
         continue;
@@ -98,17 +84,18 @@ class AgentOrchestrator {
 
   /**
    * Execute a single tool call and return the tool result message.
+   * @param {string|number} sessionId
    * @param {object} toolCall
    * @returns {Promise<object>} tool result message for messages[]
    */
-  async _executeToolCall(toolCall) {
+  async _executeToolCall(sessionId, toolCall) {
     const name = toolCall.function?.name;
     const args = toolCall.function?.arguments || {};
 
     logger.info(`[Orchestrator] Executing tool: ${name}`, args);
 
     try {
-      const result = await this.executor.execute(name, args);
+      const result = await this.executor.execute(name, args, { sessionId });
       return {
         role: 'tool',
         name,
@@ -129,8 +116,8 @@ class AgentOrchestrator {
    * @param {string|number} sessionId
    */
   clearSession(sessionId) {
-    this._sessions.delete(sessionId);
-    logger.info(`[Orchestrator] Session ${sessionId} cleared`);
+    this.memoryManager.clearSession(sessionId);
+    logger.info(`[Orchestrator] Session ${sessionId} cleared via MemoryManager`);
   }
 }
 

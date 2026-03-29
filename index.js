@@ -9,6 +9,11 @@ const { AgentOrchestrator } = require('./src/orchestrator/agentOrchestrator');
 const { MessageController } = require('./src/controller/messageController');
 const { TelegramTransport } = require('./src/transport/telegram');
 
+const { ShortTermMemory }   = require('./src/memory/shortTermMemory');
+const { LongTermMemory }    = require('./src/memory/longTermMemory');
+const { MemoryManager }     = require('./src/memory/memoryManager');
+const { createMemoryTool }  = require('./src/tools/memoryTool');
+
 /**
  * Application entry point.
  * Wires up all layers in dependency order:
@@ -29,12 +34,24 @@ async function main() {
     maxResponseBytes: config.tool.maxResponseBytes,
   });
   registerAll(toolExecutor);
+
+  // 3.5. Memory Layer
+  const shortTerm = new ShortTermMemory();
+  const longTerm = new LongTermMemory();
+  longTerm.init();
+  const memoryManager = new MemoryManager({ shortTerm, longTerm });
+
+  // Register memory tool
+  const memoryTool = createMemoryTool(longTerm);
+  toolExecutor.register(memoryTool.schema.function.name, memoryTool.schema, memoryTool.handler);
+
   logger.info(`[Main] Tools registered: ${toolExecutor.getSchemas().map(t => t.function.name).join(', ')}`);
 
   // 4. Agent Orchestrator
   const orchestrator = new AgentOrchestrator({
     llmProvider,
     toolExecutor,
+    memoryManager,
     maxSteps: config.agent.maxSteps,
   });
 
@@ -49,8 +66,8 @@ async function main() {
   logger.info('[Main] Agent is running. Press Ctrl+C to stop.');
 
   // Graceful shutdown
-  process.once('SIGINT',  () => { transport.stop(); process.exit(0); });
-  process.once('SIGTERM', () => { transport.stop(); process.exit(0); });
+  process.once('SIGINT',  () => { longTerm.close(); transport.stop(); process.exit(0); });
+  process.once('SIGTERM', () => { longTerm.close(); transport.stop(); process.exit(0); });
 }
 
 main().catch((err) => {

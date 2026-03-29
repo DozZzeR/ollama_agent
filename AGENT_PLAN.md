@@ -71,11 +71,11 @@
 **Goal**: Persist conversation history. Basic long-term facts storage.
 
 ### Tasks
-- [ ] 5.1 Create `src/memory/shortTermMemory.js` — in-memory store, per-user `messages[]`
-- [ ] 5.2 Create `src/memory/longTermMemory.js` — SQLite store (user facts, preferences)
-- [ ] 5.3 Create `src/memory/memoryManager.js` — coordinator; trim context if too long
-- [ ] 5.4 Integrate memoryManager into orchestrator
-- [ ] 5.5 Implement context trimming / summarization trigger
+- [x] 5.1 Create `src/memory/shortTermMemory.js` — in-memory store, per-user `messages[]`
+- [x] 5.2 Create `src/memory/longTermMemory.js` — SQLite store (user facts, preferences)
+- [x] 5.3 Create `src/memory/memoryManager.js` — coordinator; trim context if too long
+- [x] 5.4 Integrate memoryManager into orchestrator
+- [x] 5.5 Implement context trimming / summarization trigger
 
 ---
 
