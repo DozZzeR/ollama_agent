@@ -42,12 +42,27 @@ class MessageController {
   }
 
   /**
+   * Handle a /plan command — toggles planning mode lock.
+   * @param {string|number} sessionId
+   * @returns {string}
+   */
+  handleTogglePlan(sessionId) {
+    if (!this.orchestrator.memoryManager) return 'Memory Manager not injected';
+    const isCurrentlyEnabled = this.orchestrator.memoryManager.isPlanningEnabled(sessionId);
+    this.orchestrator.memoryManager.setPlanningEnabled(sessionId, !isCurrentlyEnabled);
+    return `Planning mode is now \`${!isCurrentlyEnabled ? 'ON' : 'OFF'}\` for this session.`;
+  }
+  /**
    * Handle a /reset command — clears session history.
    * @param {string|number} sessionId
    * @returns {string}
    */
   handleReset(sessionId) {
-    this.orchestrator.clearSession(sessionId);
+    if (this.orchestrator.memoryManager) {
+        this.orchestrator.memoryManager.clearSession(sessionId);
+    } else {
+        this.orchestrator.clearSession(sessionId);
+    }
     return 'Conversation history cleared. Starting fresh!';
   }
 }

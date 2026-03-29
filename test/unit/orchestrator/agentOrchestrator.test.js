@@ -71,6 +71,37 @@ describe('AgentOrchestrator', () => {
     expect(toolMessage.content).toBe('{"temp":15}');
   });
 
+  test('should generate a plan before executing when planningMode is true', async () => {
+    // Enable planning mode
+    memoryManager.setPlanningEnabled('session_1', true);
+    
+    // 1st LLM call: Planning step (should be called with tools=[])
+    mockLLM.chat.mockResolvedValueOnce({
+      role: 'assistant',
+      content: 'My plan: 1. Do X, 2. Do Y'
+    });
+
+    // 2nd LLM call: Main loop (returns final answer)
+    mockLLM.chat.mockResolvedValueOnce({
+      role: 'assistant',
+      content: 'I have executed the plan.'
+    });
+
+    const reply = await orchestrator.run('session_1', 'do something complex');
+
+    expect(reply).toBe('I have executed the plan.');
+    expect(mockLLM.chat).toHaveBeenCalledTimes(2);
+
+    // Verify the first call had no tools
+    expect(mockLLM.chat.mock.calls[0][1]).toEqual([]);
+    
+    // Verify the generated plan was saved to memory as a system prompt
+    const history = memoryManager.getHistoryContext('session_1');
+    const planMessage = history.find(m => m.role === 'system' && m.content.includes('Your execution plan:'));
+    expect(planMessage).toBeDefined();
+    expect(planMessage.content).toContain('My plan: 1. Do X');
+  });
+
   test('should abort if maxSteps limit is reached', async () => {
     // LLM keeps calling tools infinitely
     mockLLM.chat.mockResolvedValue({

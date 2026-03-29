@@ -51,4 +51,15 @@ describe('MemoryManager', () => {
     expect(context[1].content).toBe('msg_3');
     expect(context[5].content).toBe('msg_7');
   });
+
+  test('should toggle and retrieve planning mode', () => {
+    // Default is false (unless configured globally, but here we test session-override)
+    expect(memoryManager.isPlanningEnabled('session_1')).toBe(false);
+
+    memoryManager.setPlanningEnabled('session_1', true);
+    expect(memoryManager.isPlanningEnabled('session_1')).toBe(true);
+
+    memoryManager.setPlanningEnabled('session_1', false);
+    expect(memoryManager.isPlanningEnabled('session_1')).toBe(false);
+  });
 });

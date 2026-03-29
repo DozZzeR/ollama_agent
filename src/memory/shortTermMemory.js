@@ -9,6 +9,27 @@ const { logger } = require('../utils/logger');
 class ShortTermMemory {
   constructor() {
     this._sessions = new Map();
+    this._prefs = new Map();
+  }
+
+  /**
+   * Get session preferences
+   * @param {string|number} sessionId 
+   * @returns {object}
+   */
+  getPrefs(sessionId) {
+    if (!this._prefs.has(sessionId)) {
+      this._prefs.set(sessionId, {});
+    }
+    return this._prefs.get(sessionId);
+  }
+
+  /**
+   * Set a session preference
+   */
+  setPref(sessionId, key, value) {
+    const prefs = this.getPrefs(sessionId);
+    prefs[key] = value;
   }
 
   /**

@@ -42,6 +42,21 @@ class AgentOrchestrator {
 
     const tools = this.executor ? this.executor.getSchemas() : [];
 
+    // Optional: Pre-flight Planning Step
+    if (this.memoryManager.isPlanningEnabled(sessionId)) {
+      logger.info(`[Orchestrator] Session=${sessionId} is generating a plan...`);
+      const planPrompt = "Before executing the user's request, provide a brief step-by-step plan on how you will solve it. Use the tools you have available. Do not execute them yet, just output the plan.";
+      
+      const planContext = [...this.memoryManager.getHistoryContext(sessionId), { role: 'system', content: planPrompt }];
+      const planResponse = await this.llm.chat(planContext, []); // tools = empty array forces a text response
+
+      // Save plan to memory as a system prompt so it guides the main run loop
+      this.memoryManager.addMessage(sessionId, {
+        role: 'system',
+        content: `Your execution plan:\n${planResponse.content}`
+      });
+    }
+
     let steps = 0;
 
     while (steps < this.maxSteps) {

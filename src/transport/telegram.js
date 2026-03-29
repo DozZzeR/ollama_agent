@@ -51,8 +51,16 @@ class TelegramTransport {
         'Send me a message and I will do my best to help.\n\n' +
         'Commands:\n' +
         '  /reset — clear conversation history\n' +
+        '  /plan — toggle internal planning mode (Chain of Thought)\n' +
         '  /start — show this message'
       );
+    });
+
+    // /plan command
+    this.bot.command('plan', (ctx) => {
+      const sessionId = ctx.chat.id;
+      const reply = this.controller.handleTogglePlan(sessionId);
+      ctx.reply(reply, { parse_mode: 'Markdown' });
     });
 
     // /reset command

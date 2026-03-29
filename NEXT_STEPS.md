@@ -74,11 +74,20 @@ Entry point: load config, init all layers, start bot.
 
 ---
 
-## 🔜 Next Step: 6 — Planning Step
+## ✅ Step 6 — Planning Step (Completed)
 - Add optional `planning` mode flag in config
 - Before main loop: send "planning prompt" to LLM, receive plan
 - Append plan to `messages[]` as system context
 - Execute main loop as usual
+
+---
+
+## 🔜 Next Step: 7 — Security & Limits
+- URL blocklist: block localhost, private IP ranges
+- Optional domain allowlist
+- Add timeout per tool call (config: `TOOL_TIMEOUT_MS`)
+- Add max response size limit (`TOOL_MAX_RESPONSE_BYTES`)
+- POST/PUT require confirmation
 
 ---
 

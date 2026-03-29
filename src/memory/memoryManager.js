@@ -84,6 +84,25 @@ class MemoryManager {
   }
 
   /**
+   * Check if planning mode is enabled for a session
+   */
+  isPlanningEnabled(sessionId) {
+    const prefs = this.shortTerm.getPrefs(sessionId);
+    if (prefs.planningMode !== undefined) {
+      return prefs.planningMode;
+    }
+    const { config } = require('../config');
+    return config.agent.planningEnabled;
+  }
+
+  /**
+   * Set planning mode for a session
+   */
+  setPlanningEnabled(sessionId, enabled) {
+    this.shortTerm.setPref(sessionId, 'planningMode', enabled);
+  }
+
+  /**
    * Clear short-term session memory
    */
   clearSession(sessionId) {

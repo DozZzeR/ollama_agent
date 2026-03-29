@@ -85,10 +85,10 @@
 **Goal**: Before acting, agent produces a plan. Improves reasoning quality.
 
 ### Tasks
-- [ ] 6.1 Add optional `planning` mode flag in config
-- [ ] 6.2 Before main loop: send "planning prompt" to LLM, receive plan
-- [ ] 6.3 Append plan to `messages[]` as system context
-- [ ] 6.4 Execute main loop as usual
+- [x] 6.1 Add optional `planning` mode flag in config
+- [x] 6.2 Before main loop: send "planning prompt" to LLM, receive plan
+- [x] 6.3 Append plan to `messages[]` as system context
+- [x] 6.4 Execute main loop as usual
 
 ---
 
