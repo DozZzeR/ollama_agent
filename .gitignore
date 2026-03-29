@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment variables (NEVER commit real tokens)
+.env
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime data
+*.pid
+*.seed
+
+# SQLite database files (will be created in Phase 5)
+*.db
+*.sqlite
+data/
