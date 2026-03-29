@@ -4,6 +4,7 @@ const { config, validate } = require('./src/config');
 const { logger }            = require('./src/utils/logger');
 const { OllamaProvider }    = require('./src/llm/ollamaProvider');
 const { ToolExecutor }      = require('./src/executor/toolExecutor');
+const { registerAll }       = require('./src/tools');
 const { AgentOrchestrator } = require('./src/orchestrator/agentOrchestrator');
 const { MessageController } = require('./src/controller/messageController');
 const { TelegramTransport } = require('./src/transport/telegram');
@@ -22,11 +23,13 @@ async function main() {
   const llmProvider = new OllamaProvider();
   logger.info(`[Main] LLM provider: Ollama @ ${config.ollama.baseUrl} (${config.ollama.model})`);
 
-  // 3. Tool Executor (empty registry for now — tools will be registered in Phase 3)
+  // 3. Tool Executor + register all tools
   const toolExecutor = new ToolExecutor({
     timeoutMs: config.tool.timeoutMs,
     maxResponseBytes: config.tool.maxResponseBytes,
   });
+  registerAll(toolExecutor);
+  logger.info(`[Main] Tools registered: ${toolExecutor.getSchemas().map(t => t.function.name).join(', ')}`);
 
   // 4. Agent Orchestrator
   const orchestrator = new AgentOrchestrator({
