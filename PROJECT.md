@@ -2,376 +2,114 @@
 
 ## Overview
 
-This project defines a modular, extensible AI agent system designed to orchestrate interactions between a user (via Telegram), a local LLM (via Ollama), and external tools (HTTP, APIs, memory, etc.).
+Modular AI agent system: Telegram + Ollama + Tools.
 
-The system is not a simple chatbot. It is an **agent orchestrator** that:
+Not a simple chatbot — an **agent orchestrator** that:
+* maintains conversational context
+* provides tools to the LLM via standard tool_calls API
+* executes tools on backend
+* controls execution limits and validates responses
 
-* maintains structured conversational context,
-* delegates actions via tool calling,
-* executes external operations through backend-controlled tools,
-* and iteratively reasons toward a final answer.
+### Two Operating Modes
 
----
-
-## Goals
-
-### Primary Goals
-
-* Build a Node.js service that:
-
-  * listens to Telegram messages,
-  * processes them through a local LLM (Ollama),
-  * supports tool calling (HTTP/API/auth/etc.),
-  * executes tools via backend,
-  * returns structured responses to user.
-
-### Secondary Goals
-
-* Support modular architecture (low coupling).
-* Allow replacing:
-
-  * LLM provider,
-  * database,
-  * transport layer (Telegram → Web).
-* Implement short-term and long-term memory.
-* Enable agent-like multi-step reasoning.
-* Support future skill-based behavior (Claude-style).
+| Mode | Trigger | Tools | Description |
+|------|---------|-------|-------------|
+| DIRECT | triage score ≤ 1 | none | Simple chatbot for trivial messages |
+| TOOL_LOOP | triage score ≥ 2 | all | Agent with tools, model decides when to use them |
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
-Transport (Telegram)
+Transport (Telegram)         src/transport/telegram.js
         ↓
-Controller
+Controller                   src/controller/messageController.js
         ↓
-Agent Orchestrator
+Agent Orchestrator           src/orchestrator/agentOrchestrator.js
+   ├── Triage (scoring)      src/orchestrator/triage.js
+   ├── DIRECT path           → LLM(no tools) → text
+   └── TOOL_LOOP path        → LLM(tools) → [tool_calls → execute →]* → text
         ↓
-LLM Provider (Ollama)
+LLM Provider (Ollama)        src/llm/ollamaProvider.js
         ↓
-Tool Executor → External APIs
+Tool Executor                src/executor/toolExecutor.js
+   ├── http_fetch            src/tools/fetchTool.js
+   ├── get_current_time      src/tools/timeTool.js
+   └── remember_fact         src/tools/memoryTool.js
         ↓
-Memory Layer
+Memory Layer                 src/memory/
+   ├── ShortTermMemory       (in-memory per-session)
+   ├── LongTermMemory        (SQLite)
+   └── MemoryManager         (context assembly + prompts)
 ```
 
 ---
 
 ## Core Components
 
-### 1. Transport Layer
+### Transport Layer
+Telegraf bot. Commands: `/start`, `/reset`, `/tools`. Chat ID allowlist.
 
-* Telegram Bot API adapter
-* Handles:
+### Controller
+Normalizes input to `{ sessionId, text, onEvent }`. Delegates to orchestrator.
 
-  * incoming messages
-  * commands
-  * inline buttons
-  * formatted output
+### Orchestrator (CORE)
+Two paths:
+- **DIRECT**: `addMessage → getHistory(no tools) → llm.chat([], []) → return`
+- **TOOL_LOOP**: `addMessage → getHistory(tools) → llm.chat(messages, schemas) → execute tool_calls → loop`
 
-### 2. Controller Layer
+### Triage
+Heuristic keyword scoring. Optimization, not a gate.
+`/tools` command forces TOOL_LOOP regardless of score.
 
-* Entry point for incoming messages
-* Normalizes input
-* Passes to orchestrator
+### LLM Provider
+Abstract `LLMProvider` base class. `OllamaProvider` using `/api/chat`.
+Supports `messages`, `tools`, `format` parameters.
 
-### 3. Agent Orchestrator (CORE)
+### Tool System
+Tools expose `{ schema, handler }`. Registered in ToolExecutor.
+Schemas passed to LLM. Handlers executed by backend.
 
-* Maintains message history
-* Runs agent loop
-* Handles tool calls
-* Applies planning step
-* Controls execution limits
-
-### 4. LLM Provider
-
-* Abstract interface
-* First implementation: Ollama
-* Future: OpenAI / Claude / others
-
-### 5. Tool System
-
-* Modular tools:
-
-  * HTTP fetch
-  * JSON API
-  * auth/login
-  * memory access
-  * time
-* Each tool:
-
-  * has schema
-  * is validated
-  * is executed by backend
-
-### 6. Tool Executor
-
-* Executes tool calls safely
-* Validates input
-* Applies ограничения (timeouts, size limits)
-
-### 7. Memory Layer
-
-#### Short-term memory
-
-* recent messages
-* tool results
-* summarized context
-
-#### Long-term memory
-
-* user facts
-* preferences
-* learned data
-
-### 8. Skill System (Planned)
-
-* Dynamic prompt modules
-* Tool subsets
-* Context-aware behavior modes
+### Memory
+- **ShortTermMemory**: in-memory per-session messages + preferences
+- **LongTermMemory**: SQLite (user_facts, agent_runs)
+- **MemoryManager**: assembles context (system prompt + facts + history)
 
 ---
 
-## Agent Execution Model
+## Key Design Decisions
 
-The system operates as a loop:
+### Model decides tool usage
+The model receives tool schemas and decides via standard Ollama `tool_calls`.
+This replaces a hardcoded keyword-based gate that couldn't cover all cases.
 
-1. User message received
-2. LLM processes messages[]
-3. LLM may request tool calls
-4. Backend executes tools
-5. Results appended to messages[]
-6. Loop continues until final answer
+### Anti-hallucination
+System prompt explicitly forbids claiming tool results without actual calls.
+Fact validation blocks meta-instructions and garbage from being saved.
 
----
-
-## Planning Step
-
-Before execution, the system may optionally:
-
-* ask LLM to produce a plan
-* execute plan step-by-step
-* improve reasoning quality
-
----
-
-## Tool Rules
-
-### Allowed
-
-* GET requests (auto)
-
-### Restricted
-
-* POST/PUT → require confirmation
-* auth flows → controlled
-
-### Security
-
-* block localhost (except whitelist)
-* block internal IP ranges
-* optional domain allowlist
-
----
-
-## Memory Strategy
-
-* Context is NOT infinite
-* Must implement:
-
-  * trimming
-  * summarization
-  * separation of memory types
+### Language matching
+System prompt starts with CRITICAL RULE about responding in user's language.
+Applied to both DIRECT and TOOL_LOOP modes.
 
 ---
 
 ## Constraints
 
-* max steps per request
-* max tool response size
-* timeout per tool
-* rate limiting (future)
+* Max tool loop iterations: 10
+* Max history messages: 50
+* Tool timeout: 10s (configurable)
+* Tool response max: 32KB (configurable)
+* LLM timeout: 60s (configurable)
+* Fact length: 5-200 chars, blocked patterns
 
 ---
 
-## Storage
-
-### MVP
-
-* SQLite (via abstraction layer)
-
-### Future
-
-* PostgreSQL
-* vector storage (embeddings)
-
----
-
-## LLM Strategy
-
-### Primary
-
-* Local Ollama model
-
-### Future
-
-* fallback to external API if needed
-
----
-
-## Developer Notes (IMPORTANT)
-
-* LLM is stateless
-* Backend controls loop
-* messages[] is the ONLY source of context
-* Tool execution is ALWAYS backend responsibility
-
----
-
-# MVP Implementation Plan
-
-## Step 1 — Project Skeleton
-
-→ see: Architecture / Core Components
-
-* folders structure
-* base orchestrator
-* LLM provider (Ollama)
-* Telegram adapter
-
----
-
-## Step 2 — Basic Chat Loop
-
-→ see: Agent Execution Model
-
-* messages[]
-* single-step response
-* no tools yet
-
----
-
-## Step 3 — Tool Calling
-
-→ see: Tool System
-
-* implement fetch tool
-* detect tool_calls
-* execute + return
-
----
-
-## Step 4 — Multi-step Agent Loop
-
-→ see: Agent Execution Model
-
-* loop with max steps
-* handle multiple tool calls
-
----
-
-## Step 5 — Memory Layer
-
-→ see: Memory Strategy
-
-* short-term storage
-* basic long-term store
-
----
-
-## Step 6 — Planning Step
-
-→ see: Planning Step
-
-* optional pre-plan
-* structured execution
-
----
-
-## Step 7 — Security & Limits
-
-→ see: Constraints / Tool Rules
-
-* validation
-* rate limiting (basic)
-* URL filtering
-
----
-
-## Step 8 — Skill System (optional MVP+)
-
-→ see: Skill System
-
-* dynamic prompts
-* tool routing
-
----
-
-# Internal Thoughts (Human Notes)
-
-(These are design intentions and reasoning, not strict requirements)
-
-* System must behave as orchestrator, not chatbot
-* Avoid overengineering early (queues, microservices)
-* Start simple → evolve
-* Agent loop is the core abstraction
-* Tool calling is controlled RPC, not magic
-* Memory must be structured early to avoid rewrite later
-* Skills may become dominant abstraction later
-
----
-
-# Code Generator Instructions
-
-You (Antigravity code generator agent) MUST:
-
-1. Read this file before any action
-
-2. Generate a working plan in:
-   → `AGENT_PLAN.md`
-
-3. The plan must:
-
-   * break MVP into tasks
-   * reference sections of this document
-   * define execution order
-
-4. Then generate:
-   → `NEXT_STEPS.md`
-
-5. Each step must:
-
-   * be atomic
-   * be executable
-   * produce working code
-
-6. After each step:
-
-   * re-evaluate architecture
-   * avoid breaking abstractions
-
-7. DO NOT:
-
-   * skip layers
-   * hardcode tools into orchestrator
-   * mix transport with core logic
-
----
-
-## Anti-Patterns
-
-* No giant “god service”
-* No direct fetch inside LLM layer
-* No uncontrolled context growth
-* No hidden side effects
-
----
-
-## Desired Outcome
-
-A modular, extensible AI agent system capable of:
-
-* reasoning,
-* acting,
-* remembering,
-* and evolving.
+## Developer Notes
+
+* LLM is stateless. Backend controls the loop.
+* messages[] is the ONLY source of context.
+* Tool execution is ALWAYS backend responsibility.
+* If model didn't call a tool → it doesn't have that data.
+* DIRECT mode = no tools in prompt, no tools in API.
+* TOOL_LOOP mode = tools in prompt AND in API.

@@ -37,8 +37,6 @@ function createMemoryTool(longTermMemory) {
      * @returns {Promise<string>}
      */
     handler: async (args, context) => {
-      // If we have a sessionId in context (we need to update toolExecutor to pass it), we use it.
-      // Otherwise we fall back to args.sessionId
       const sessionId = context?.sessionId || args.sessionId;
       
       if (!sessionId) {
@@ -49,7 +47,32 @@ function createMemoryTool(longTermMemory) {
         throw new Error('LongTermMemory is not available.');
       }
 
-      const id = longTermMemory.saveFact(sessionId, args.fact);
+      const fact = (args.fact || '').trim();
+
+      // Validate fact quality — prevent hallucinated garbage
+      if (fact.length < 5) {
+        return 'Fact too short. Please provide a meaningful fact about the user.';
+      }
+      if (fact.length > 200) {
+        return 'Fact too long. Keep facts concise (under 200 characters).';
+      }
+
+      // Block meta-instructions and command-like facts
+      const blockedPatterns = [
+        /^\//, // starts with slash (command)
+        /stop\s*interaction/i,
+        /end\s*(the\s*)?conversation/i,
+        /wants?\s*to\s*(stop|quit|exit|leave)/i,
+        /is\s*an?\s*(end-user|system|bot)\s*request/i,
+      ];
+      for (const pattern of blockedPatterns) {
+        if (pattern.test(fact)) {
+          logger.warn(`[MemoryTool] Blocked suspicious fact: "${fact}"`);
+          return 'This fact looks like a command or meta-instruction, not a user preference. Fact NOT saved.';
+        }
+      }
+
+      const id = longTermMemory.saveFact(sessionId, fact);
       if (id !== null) {
         return `Fact successfully saved to memory. It will be recalled in future messages.`;
       } else {

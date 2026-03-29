@@ -47,20 +47,20 @@ class TelegramTransport {
     // /start command
     this.bot.command('start', (ctx) => {
       ctx.reply(
-        '👋 Hello! I am an AI agent powered by Ollama.\n' +
-        'Send me a message and I will do my best to help.\n\n' +
-        'Commands:\n' +
-        '  /reset — clear conversation history\n' +
-        '  /plan — toggle internal planning mode (Chain of Thought)\n' +
-        '  /start — show this message'
+        '👋 Привет! Я AI-агент на Ollama.\n' +
+        'Отправьте мне сообщение — я постараюсь помочь.\n\n' +
+        'Команды:\n' +
+        '  /reset — очистить историю диалога\n' +
+        '  /tools — принудительно использовать инструменты для следующего сообщения\n' +
+        '  /start — показать это сообщение'
       );
     });
 
-    // /plan command
-    this.bot.command('plan', (ctx) => {
+    // /tools command — force TOOL_LOOP for next message
+    this.bot.command('tools', (ctx) => {
       const sessionId = ctx.chat.id;
       const reply = this.controller.handleTogglePlan(sessionId);
-      ctx.reply(reply, { parse_mode: 'Markdown' });
+      ctx.reply(reply);
     });
 
     // /reset command
@@ -78,9 +78,44 @@ class TelegramTransport {
       // Show typing indicator
       ctx.sendChatAction('typing').catch(() => {});
 
+      let streamMessageId = null;
+      let streamText = '';
+
+      const onEvent = async (event) => {
+        try {
+          if (event.type === 'plan_generated') {
+            streamText = `📝 **Execution Plan:**\n${event.data}\n\n`;
+            const sentMsg = await ctx.reply(streamText);
+            streamMessageId = sentMsg.message_id;
+          } else if (event.type === 'tool_start') {
+            streamText += `⏳ Calling: \`${event.data}\`...\n`;
+            if (streamMessageId) {
+              await ctx.telegram.editMessageText(ctx.chat.id, streamMessageId, null, streamText);
+            } else {
+              const sentMsg = await ctx.reply(streamText);
+              streamMessageId = sentMsg.message_id;
+            }
+          } else if (event.type === 'tool_end') {
+            streamText = streamText.replace(`⏳ Calling: \`${event.data}\`...`, `✅ Completed: \`${event.data}\``);
+            if (streamMessageId) {
+              await ctx.telegram.editMessageText(ctx.chat.id, streamMessageId, null, streamText);
+            }
+          }
+        } catch (e) {
+          logger.warn(`[Telegram] Error updating live message: ${e.message}`);
+        }
+      };
+
       try {
-        const reply = await this.controller.handle({ sessionId, text });
-        await ctx.reply(reply, { parse_mode: 'Markdown' });
+        let reply = await this.controller.handle({ sessionId, text, onEvent });
+        
+        // Strip out any zero-width characters and spaces to verify it's not effectively empty
+        const cleaned = (reply || '').toString().replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        if (cleaned.length === 0) {
+          reply = '⚠️ (Response generated, check action logs / model returned invisible characters)';
+        }
+        
+        await ctx.reply(reply);
       } catch (err) {
         logger.error('[Telegram] Error handling message:', err.message);
         await ctx.reply('⚠️ An error occurred while processing your message. Please try again.');

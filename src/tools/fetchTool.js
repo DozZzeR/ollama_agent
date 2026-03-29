@@ -26,6 +26,11 @@ function validateUrl(url) {
     throw new Error('URL must be a non-empty string');
   }
 
+  // Auto-prefix http protocol if missing (models often forget it)
+  if (!/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+
   let parsed;
   try {
     parsed = new URL(url);
@@ -52,8 +57,11 @@ const schema = {
     name: 'http_fetch',
     description:
       'Fetch content from a public URL via HTTP GET or POST. ' +
-      'Use for reading web pages, calling public APIs, or retrieving JSON data. ' +
-      'Private/local URLs are not allowed.',
+      'Use for reading web pages, news, weather, or any publicly available data. ' +
+      'IMPORTANT: Only use publicly accessible URLs that do NOT require API keys or authentication. ' +
+      'Good examples: Google News RSS (news.google.com/rss), Wikipedia, public websites. ' +
+      'Bad examples: newsapi.org (needs API key), openweathermap.org (needs API key). ' +
+      'If a fetch fails, try a different URL or tell the user the data is unavailable.',
     parameters: {
       type: 'object',
       properties: {
@@ -91,6 +99,10 @@ const schema = {
  * @returns {Promise<string>}
  */
 async function handler({ url, method = 'GET', headers = {}, body = null }) {
+  if (url && typeof url === 'string' && !/^https?:\/\//i.test(url)) {
+    url = 'https://' + url;
+  }
+
   validateUrl(url);
 
   const upperMethod = method.toUpperCase();
@@ -123,8 +135,14 @@ async function handler({ url, method = 'GET', headers = {}, body = null }) {
     }
   }
 
-  // Strip excessive whitespace from HTML
-  if (contentType.includes('text/html')) {
+  // Parse RSS/Atom XML into readable text
+  if (contentType.includes('xml') || contentType.includes('rss') || contentType.includes('atom')
+      || result.trimStart().startsWith('<?xml')) {
+    result = parseRssToText(result);
+  }
+
+  // Strip tags from HTML
+  else if (contentType.includes('text/html')) {
     result = result
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(/<style[\s\S]*?<\/style>/gi, '')
@@ -133,7 +151,82 @@ async function handler({ url, method = 'GET', headers = {}, body = null }) {
       .trim();
   }
 
+  // Truncate very long responses to avoid overwhelming the model
+  const MAX_CHARS = 8000;
+  if (result.length > MAX_CHARS) {
+    result = result.substring(0, MAX_CHARS) + '\n\n[... truncated, total ' + response.data.length + ' chars]';
+  }
+
   return `HTTP ${response.status} ${upperMethod} ${url}\n\n${result}`;
+}
+
+/**
+ * Parse RSS/Atom XML into a clean readable text list.
+ * Uses regex — no external XML parser needed.
+ */
+function parseRssToText(xml) {
+  const items = [];
+
+  // Extract channel/feed title
+  const feedTitleMatch = xml.match(/<channel>[\s\S]*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/i);
+  const feedTitle = feedTitleMatch ? feedTitleMatch[1].trim() : 'RSS Feed';
+
+  // Extract <item> or <entry> elements
+  const itemRegex = /<(?:item|entry)>([\s\S]*?)<\/(?:item|entry)>/gi;
+  let match;
+
+  while ((match = itemRegex.exec(xml)) !== null && items.length < 20) {
+    const block = match[1];
+
+    const title = extractTag(block, 'title');
+    const link = extractTag(block, 'link') || extractAttr(block, 'link', 'href');
+    const pubDate = extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated');
+    const desc = extractTag(block, 'description') || extractTag(block, 'summary') || '';
+
+    // Clean HTML from description
+    const cleanDesc = desc
+      .replace(/<!\[CDATA\[/g, '').replace(/\]\]>/g, '')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    items.push({
+      title: title || '(no title)',
+      link: link || '',
+      date: pubDate || '',
+      desc: cleanDesc.length > 200 ? cleanDesc.substring(0, 200) + '...' : cleanDesc,
+    });
+  }
+
+  if (items.length === 0) {
+    // Fallback: strip all XML tags
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  let text = `📰 ${feedTitle} (${items.length} items)\n\n`;
+  items.forEach((item, i) => {
+    text += `${i + 1}. ${item.title}\n`;
+    if (item.date) text += `   Date: ${item.date}\n`;
+    if (item.link) text += `   Link: ${item.link}\n`;
+    if (item.desc) text += `   ${item.desc}\n`;
+    text += '\n';
+  });
+
+  return text;
+}
+
+function extractTag(block, tag) {
+  const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?(.*?)(?:\\]\\]>)?<\\/${tag}>`, 'is');
+  const m = block.match(re);
+  return m ? m[1].trim() : '';
+}
+
+function extractAttr(block, tag, attr) {
+  const re = new RegExp(`<${tag}[^>]*${attr}="([^"]*)"`, 'i');
+  const m = block.match(re);
+  return m ? m[1] : '';
 }
 
 module.exports = { schema, handler };

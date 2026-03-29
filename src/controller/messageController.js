@@ -28,16 +28,17 @@ class MessageController {
    * @param {object} input
    * @param {string|number} input.sessionId - Unique chat/session ID
    * @param {string}        input.text      - User message text
+   * @param {Function}      [input.onEvent] - Optional callback for live events
    * @returns {Promise<string>}             - Assistant reply
    */
-  async handle({ sessionId, text }) {
+  async handle({ sessionId, text, onEvent = () => {} }) {
     logger.info(`[Controller] Message from session=${sessionId}: "${text}"`);
 
     if (!text || typeof text !== 'string' || text.trim() === '') {
       return 'Please send a text message.';
     }
 
-    const reply = await this.orchestrator.run(sessionId, text.trim());
+    const reply = await this.orchestrator.run(sessionId, text.trim(), onEvent);
     return reply;
   }
 
@@ -50,7 +51,7 @@ class MessageController {
     if (!this.orchestrator.memoryManager) return 'Memory Manager not injected';
     const isCurrentlyEnabled = this.orchestrator.memoryManager.isPlanningEnabled(sessionId);
     this.orchestrator.memoryManager.setPlanningEnabled(sessionId, !isCurrentlyEnabled);
-    return `Planning mode is now \`${!isCurrentlyEnabled ? 'ON' : 'OFF'}\` for this session.`;
+    return `Режим инструментов: ${!isCurrentlyEnabled ? 'ВКЛ' : 'ВЫКЛ'} (для следующего сообщения)`;
   }
   /**
    * Handle a /reset command — clears session history.

@@ -13,7 +13,7 @@ const { ShortTermMemory }   = require('./src/memory/shortTermMemory');
 const { LongTermMemory }    = require('./src/memory/longTermMemory');
 const { MemoryManager }     = require('./src/memory/memoryManager');
 const { createMemoryTool }  = require('./src/tools/memoryTool');
-const { createReasoningTool } = require('./src/tools/reasoningTool');
+
 
 /**
  * Application entry point.
@@ -46,8 +46,7 @@ async function main() {
   const memoryTool = createMemoryTool(longTerm);
   toolExecutor.register(memoryTool.schema.function.name, memoryTool.schema, memoryTool.handler);
 
-  const reasoningTool = createReasoningTool();
-  toolExecutor.register(reasoningTool.schema.function.name, reasoningTool.schema, reasoningTool.handler);
+
 
   logger.info(`[Main] Tools registered: ${toolExecutor.getSchemas().map(t => t.function.name).join(', ')}`);
 
@@ -56,7 +55,6 @@ async function main() {
     llmProvider,
     toolExecutor,
     memoryManager,
-    maxSteps: config.agent.maxSteps,
   });
 
   // 5. Message Controller

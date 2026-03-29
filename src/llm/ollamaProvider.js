@@ -20,9 +20,10 @@ class OllamaProvider extends LLMProvider {
   /**
    * @param {Array<object>} messages
    * @param {Array<object>} [tools]
+   * @param {string}        [format]
    * @returns {Promise<object>} response message
    */
-  async chat(messages, tools = []) {
+  async chat(messages, tools = [], format = null) {
     const payload = {
       model: this.model,
       messages,
@@ -31,6 +32,10 @@ class OllamaProvider extends LLMProvider {
 
     if (tools.length > 0) {
       payload.tools = tools;
+    }
+
+    if (format) {
+      payload.format = format;
     }
 
     const response = await axios.post(`${this.baseUrl}/api/chat`, payload, {
