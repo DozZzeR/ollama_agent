@@ -49,9 +49,9 @@ class MessageController {
    */
   handleTogglePlan(sessionId) {
     if (!this.orchestrator.memoryManager) return 'Memory Manager not injected';
-    const isCurrentlyEnabled = this.orchestrator.memoryManager.isPlanningEnabled(sessionId);
-    this.orchestrator.memoryManager.setPlanningEnabled(sessionId, !isCurrentlyEnabled);
-    return `Режим инструментов: ${!isCurrentlyEnabled ? 'ВКЛ' : 'ВЫКЛ'} (для следующего сообщения)`;
+    const current = this.orchestrator.memoryManager.isForceToolsNext(sessionId);
+    this.orchestrator.memoryManager.setForceToolsNext(sessionId, !current);
+    return `Режим инструментов: ${!current ? 'ВКЛ' : 'ВЫКЛ'} (для следующего сообщения)`;
   }
   /**
    * Handle a /reset command — clears session history.

@@ -24,7 +24,6 @@ const config = {
 
   agent: {
     maxSteps: Number(process.env.AGENT_MAX_STEPS) || 10,
-    planningEnabled: process.env.AGENT_PLANNING_ENABLED === 'true',
     // true = all messages go through TOOL_LOOP (model decides tool use)
     // false = triage decides: score ≤ 1 → DIRECT (no tools), score ≥ 2 → TOOL_LOOP
     forceToolLoop: process.env.FORCE_TOOL_LOOP !== 'false', // default: true
